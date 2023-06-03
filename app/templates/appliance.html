@@ -1,0 +1,52 @@
+{% extends './base.html' %}{{super()}}
+
+{% block content %}
+
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
+    <div style="margin-left: 50px;">
+        <h1 class="h3 ">
+            Hi you can upload your {{appliance_name}} data here: <br/><br/>
+            <h1>Upload your CSV file</h1>
+            <form method="POST" action="" enctype="multipart/form-data">
+            <p><input type="file" name="file"></p>
+            <p><input type="submit" value="Submit"></p>
+            </form>
+
+            <p style="margin-left: 10px;margin-right: 10px;">
+
+                1. Allow to upload a csv file of the aggregate power <br/>
+                2. Transfer it to the  backen to be preprocessed then disaggregated <br/>
+                3. Plot the output of the model in JS plot <br/>
+
+            </p>
+        
+
+        <canvas id="lineChart" width="900" height="400"></canvas>
+        <script>
+            var ctx = document.getElementById("lineChart").getContext("2d");
+            var lineChart = new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels : {{labels | safe }},
+                    dataset: [
+                        {
+                            label: "Data points",
+                            data: {{values | safe}},
+                            fill: false
+                        }
+                    ]
+                },
+                options : {
+                    reponsive: false
+                }
+            })
+        </script>
+
+        </h1>
+
+    </div>
+    
+</div>
+
+{% endblock %}
