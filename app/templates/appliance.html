@@ -4,7 +4,7 @@
 
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
     <div style="margin-left: 50px;" class="w-100">
-        <h1 class="h3 ">
+        <h1>{{ appliance_name }}</h1>
             Hi you can upload your {{appliance_name}} data here: <br/><br/>
             <h1>Upload your CSV file</h1>
             <form method="POST" action="" enctype="multipart/form-data">
@@ -13,19 +13,18 @@
             </form>
 
             <p style="margin-left: 10px;margin-right: 10px;">
-
                 1. Allow to upload a csv file of the aggregate power <br/>
                 2. Transfer it to the  backen to be preprocessed then disaggregated <br/>
                 3. Plot the output of the model in JS plot <br/>
-
             </p>
-        </h1>
-        <div id="chart" class="w-100"></div>
+        
+        {% if fig_json is not none %}        
+        <div id="chartDiv" class="w-100"></div>
         <script type="text/javascript">
-            var chartDiv = document.getElementById('chart')
-            var graphs = {{ graph_json | safe}};
-            Plotly.newPlot(chartDiv,graphs,{});        
+            var fig = {{ fig_json | safe}};
+            Plotly.newPlot("chartDiv", fig);        
         </script>
+        {% endif %}
     </div>
 </div>
 

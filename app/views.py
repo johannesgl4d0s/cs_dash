@@ -84,31 +84,49 @@ class Home(BaseView):
         """
         This function allows provides an appliance name that need to be disaggregated and the 
         """
-        return self.render_template('appliance.html', appliance_name=appliance_name)
+
+        # Compute Path and File Name
+        current_user = str(self.appbuilder.sm.current_user)
+        file_name = f'{current_user}_power_data.csv'
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_name)
+
+        # Check if file exists
+        fig_json = None
+        if os.path.exists(file_path):
+            # Process file
+            df = pd.read_csv(file_path).dropna().reset_index(drop=True)
+            df.columns = ["Timestamp", "Power"]
+            fig = px.line(df, x="Timestamp", y="Power")
+            fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+  
+        return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
     
     @expose('/appliance/<string:appliance_name>', methods=['POST'])
     def upload_files(self, appliance_name):  
+        # Request Validation
         if "file" not in request.files:
             raise Exception("No file uploaded")
         
         if ".csv" not in request.files['file'].filename:
             raise Exception("No csv file uploaded")
 
-        # Save Uploaded File
-        uploaded_file = request.files['file']
+        # Compute Path and File Name
         current_user = str(self.appbuilder.sm.current_user)
-        new_filename = f'{current_user}_{str(datetime.today())}.csv'.replace(" ", "").replace(":", "_")
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], new_filename)
-        uploaded_file.save(file_path)
+        file_name = f'{current_user}_power_data.csv'
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_name)
         
+        # Save file
+        uploaded_file = request.files['file']
+        uploaded_file.save(file_path)
+
         # Process file
-        df = pd.read_csv(file_path, sep=",", dtype={"Datum": str, "Power": int}).dropna().reset_index(drop=True)
-        fig = px.line(df, x="Datum", y="Power")
-        graph_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+        df = pd.read_csv(file_path).dropna().reset_index(drop=True)
+        df.columns = ["Timestamp", "Power"]
+        fig = px.line(df, x="Timestamp", y="Power")
+        fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
 
-
-        #return jsonify({"file": new_filename, "upload": file_path, "graph": graph_json})
-        return self.render_template('appliance.html', appliance_name=appliance_name, graph_json = graph_json)
+        #return jsonify({"file": file_name, "upload": file_path, "fig": fig_json})
+        return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
 
     
 
