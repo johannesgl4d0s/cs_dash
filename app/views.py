@@ -1,8 +1,7 @@
 from flask import render_template, request, redirect, url_for, jsonify
 import os
-from os.path import join, dirname, realpath
 from flask_appbuilder.models.sqla.interface import SQLAInterface
-from flask_appbuilder import ModelView, ModelRestApi
+from flask_appbuilder import expose, BaseView
 
 from werkzeug.utils import secure_filename
 from datetime import datetime
@@ -13,7 +12,8 @@ import json
 import plotly
 import plotly.express as px
 
-from . import appbuilder, db, app
+from app import appbuilder, db, app
+from .models import *
 
 """
     Create your Model based REST API::
@@ -46,9 +46,6 @@ from . import appbuilder, db, app
 """
     Application wide 404 error handler
 """
-
-from flask_appbuilder import AppBuilder, BaseView, expose, has_access
-from app import appbuilder
 
 
 class Home(BaseView):
@@ -84,23 +81,20 @@ class Home(BaseView):
         """
         This function allows provides an appliance name that need to be disaggregated and the 
         """
-
-        # Compute Path and File Name
         current_user = str(self.appbuilder.sm.current_user)
-        file_name = f'{current_user}_power_data.csv'
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_name)
+        user_id = self.appbuilder.sm.current_user.id        
+        count_data = db.engine.execute(f"SELECT COUNT(*) FROM history WHERE user_id = {user_id}").fetchone()[0]
 
         # Check if file exists
         fig_json = None
-        if os.path.exists(file_path):
-            # Process file
-            df = pd.read_csv(file_path).dropna().reset_index(drop=True)
-            df.columns = ["Timestamp", "Power"]
+        if count_data > 0:
+            sql = f"SELECT timestamp, power FROM history WHERE user_id = {user_id}"
+            df = pd.DataFrame(db.engine.execute(sql), columns=["Timestamp", "Power"])
             fig = px.line(df, x="Timestamp", y="Power")
             fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
-  
         return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
     
+
     @expose('/appliance/<string:appliance_name>', methods=['POST'])
     def upload_files(self, appliance_name):  
         # Request Validation
@@ -112,6 +106,7 @@ class Home(BaseView):
 
         # Compute Path and File Name
         current_user = str(self.appbuilder.sm.current_user)
+        user_id = self.appbuilder.sm.current_user.id
         file_name = f'{current_user}_power_data.csv'
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_name)
         
@@ -125,7 +120,12 @@ class Home(BaseView):
         fig = px.line(df, x="Timestamp", y="Power")
         fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
 
-        #return jsonify({"file": file_name, "upload": file_path, "fig": fig_json})
+        # Upload Data to DB
+        db.engine.execute(f"DELETE FROM history WHERE user_id = {user_id}")
+        for row in df.itertuples():
+            db.engine.execute(f"INSERT INTO history (user_id, timestamp, power) VALUES ({user_id}, '{row.Timestamp}', {row.Power})")
+
+        #return jsonify({"file": file_name, "upload": file_path, "fig": fig_json, "user_id": user_id})
         return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
 
     
@@ -141,6 +141,3 @@ def page_not_found(e):
         ),
         404,
     )
-
-
-db.create_all()

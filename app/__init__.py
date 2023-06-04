@@ -1,11 +1,7 @@
 import logging
 
-from flask import Flask, render_template, request, redirect, url_for
-import os
-from os.path import join, dirname, realpath
+from flask import Flask
 from flask_appbuilder import AppBuilder, SQLA
-from werkzeug.utils import secure_filename
-from datetime import datetime
 
 
 from app.newindex import MyIndexView
@@ -23,11 +19,11 @@ db = SQLA(app)
 appbuilder = AppBuilder(app, db.session,  base_template='base.html', indexview=MyIndexView)
 
 
-# @app.route("/appliance/<name>")
-# def plot_graph(name):
-#       labels,values = home()
-#       return redirect(url_for('Home.appliance', appliance_name = name, labels = labels, values=values))
+from . import views
+from . import models
 
+with app.app_context():
+    db.create_all()
 
 
 """
@@ -43,4 +39,3 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.close()
 """
 
-from . import views
