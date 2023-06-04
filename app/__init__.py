@@ -20,7 +20,7 @@ appbuilder = AppBuilder(app, db.session,  base_template='base.html', indexview=M
 
 
 from . import views
-from . import models
+# from . import models    # -> move to raw sql
 
 with app.app_context():
     db.create_all()
