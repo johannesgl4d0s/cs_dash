@@ -11,6 +11,7 @@ import pandas as pd
 import json
 import plotly
 import plotly.express as px
+import sqlite3
 
 from app import appbuilder, db, app
 
@@ -25,8 +26,22 @@ class Home(BaseView):
 
     @expose('/history/<string:period>')
     def history(self, period):
+        con = sqlite3.connect("app.db")
+        cur = con.cursor()
+
+        # for example ... if user == 'bart simpson' -> 7?! nicht umgesetzt
+
+        if period == 'last3months':
+            select = cur.execute("SELECT user_id, timestamp, power FROM history WHERE user_id = 7 AND timestamp > '2015-03-31 00:00:00+00:00'")
+        elif period == 'lastyear':
+            select = cur.execute("SELECT user_id, timestamp, power FROM history WHERE user_id = 7 AND timestamp > '2014-06-30 00:00:00+00:00'")
+        else:
+            select = cur.execute("SELECT user_id, timestamp, power FROM history WHERE user_id = 7")
+
+        liste = select.fetchall()
+        con.close()
         self.update_redirect()
-        return self.render_template('history.html')
+        return json.dumps(liste) # self.render_template('history.html')
     
     @expose('/leaderboard')
     def leaderboard(self):
