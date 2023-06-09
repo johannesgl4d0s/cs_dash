@@ -25,14 +25,12 @@ class Home(BaseView):
 
     @expose('/history/<string:period>')
     def history(self, period):
-        user_id = self.appbuilder.sm.current_user.id
         if period == "last3months":
             period_filter = "-3 months"
         elif period == "lastyear":
             period_filter = "-1 year"
         else:
             period_filter = "-100 years"  
-
         sql = """
             SELECT id, user_id, timestamp, power
             FROM history
@@ -41,12 +39,21 @@ class Home(BaseView):
                     FROM history
                     WHERE user_id = :user_id
             ) 
+            ORDER BY timestamp
         """
-        data = db.engine.execute(sql, user_id = user_id, period_filter = period_filter).fetchall()
-        data = [{"id": row[0], "user_id": row[1], "timestamp": row[2], "power": row[3]} for row in data]
 
-        return jsonify({"data": data}) 
-        #return self.render_template('history.html')
+        user_id = self.appbuilder.sm.current_user.id
+        count_data = db.engine.execute("SELECT COUNT(*) FROM history WHERE user_id = :user_id", user_id = user_id).fetchone()[0]
+        
+        fig_json = None
+        if count_data > 0:
+            data = db.engine.execute(sql, user_id = user_id, period_filter = period_filter).fetchall()
+            df = pd.DataFrame(data=data, columns=["id", "user_id", "timestamp", "power"])
+            fig = px.line(df, x="timestamp", y="power")
+            fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+        return self.render_template('history.html', fig_json=fig_json)
+        
+
     
     @expose('/leaderboard')
     def leaderboard(self):
@@ -68,16 +75,14 @@ class Home(BaseView):
         """
         This function allows provides an appliance name that need to be disaggregated and the 
         """
-        current_user = str(self.appbuilder.sm.current_user)
         user_id = self.appbuilder.sm.current_user.id        
         count_data = db.engine.execute("SELECT COUNT(*) FROM history WHERE user_id = :user_id", user_id = user_id).fetchone()[0]
 
-        # Check if file exists
         fig_json = None
         if count_data > 0:
-            sql = "SELECT timestamp, power FROM history WHERE user_id = :user_id"
-            df = pd.DataFrame(db.engine.execute(sql, user_id = user_id), columns=["Timestamp", "Power"])
-            fig = px.line(df, x="Timestamp", y="Power")
+            sql = "SELECT timestamp, power FROM history WHERE user_id = :user_id order by timestamp"
+            df = pd.DataFrame(db.engine.execute(sql, user_id = user_id), columns=["timestamp", "power"])
+            fig = px.line(df, x="timestamp", y="power")
             fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
         return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
     
@@ -103,15 +108,15 @@ class Home(BaseView):
 
         # Process file
         df = pd.read_csv(file_path, sep=";").dropna().reset_index(drop=True)
-        df.columns = ["Timestamp", "Power"]
-        fig = px.line(df, x="Timestamp", y="Power")
+        df.columns = ["timestamp", "power"]
+        fig = px.line(df, x="timestamp", y="power")
         fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
 
         # Upload Data to DB
         db.engine.execute("DELETE FROM history WHERE user_id = :user_id", user_id = user_id)
         for row in df.itertuples():
-            sql = "INSERT INTO history (user_id, timestamp, power) VALUES (:user_id, ':timestamp', :power)"
-            db.engine.execute(sql, user_id = user_id, timestamp = row.Timestamp, power = row.Power)
+            sql = "INSERT INTO history (user_id, timestamp, power) VALUES (:user_id, :timestamp, :power)"
+            db.engine.execute(sql, user_id = user_id, timestamp = row.timestamp, power = row.power)
 
         #return jsonify({"file": file_name, "upload": file_path, "fig": fig_json, "user_id": user_id})
         return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
