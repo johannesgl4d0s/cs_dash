@@ -6,7 +6,6 @@ from flask_appbuilder import expose, BaseView
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import logging
-logging.getLogger()
 import pandas as pd
 import json
 import plotly
@@ -14,6 +13,7 @@ import plotly.express as px
 
 from app import appbuilder, db, app
 
+logging.getLogger()
 
 class Home(BaseView):
     route_base = '/'
@@ -33,23 +33,20 @@ class Home(BaseView):
         else:
             period_filter = "-100 years"  
 
-        sql = f"""
+        sql = """
             SELECT id, user_id, timestamp, power
             FROM history
-            WHERE 
-                user_id = {user_id} AND 
-                timestamp > (
-                    SELECT DATETIME(MAX(timestamp), '{period_filter}')
+            WHERE user_id = :user_id AND timestamp > (
+                    SELECT DATETIME(MAX(timestamp), :period_filter)
                     FROM history
-                    WHERE user_id = {user_id}
+                    WHERE user_id = :user_id
             ) 
         """
-        data = db.engine.execute(sql).fetchall()
+        data = db.engine.execute(sql, user_id = user_id, period_filter = period_filter).fetchall()
         data = [{"id": row[0], "user_id": row[1], "timestamp": row[2], "power": row[3]} for row in data]
 
-        #self.update_redirect()
         return jsonify({"data": data}) 
-        # self.render_template('history.html')
+        #return self.render_template('history.html')
     
     @expose('/leaderboard')
     def leaderboard(self):
@@ -73,13 +70,13 @@ class Home(BaseView):
         """
         current_user = str(self.appbuilder.sm.current_user)
         user_id = self.appbuilder.sm.current_user.id        
-        count_data = db.engine.execute(f"SELECT COUNT(*) FROM history WHERE user_id = {user_id}").fetchone()[0]
+        count_data = db.engine.execute("SELECT COUNT(*) FROM history WHERE user_id = :user_id", user_id = user_id).fetchone()[0]
 
         # Check if file exists
         fig_json = None
         if count_data > 0:
-            sql = f"SELECT timestamp, power FROM history WHERE user_id = {user_id}"
-            df = pd.DataFrame(db.engine.execute(sql), columns=["Timestamp", "Power"])
+            sql = "SELECT timestamp, power FROM history WHERE user_id = :user_id"
+            df = pd.DataFrame(db.engine.execute(sql, user_id = user_id), columns=["Timestamp", "Power"])
             fig = px.line(df, x="Timestamp", y="Power")
             fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
         return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
@@ -111,9 +108,10 @@ class Home(BaseView):
         fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
 
         # Upload Data to DB
-        db.engine.execute(f"DELETE FROM history WHERE user_id = {user_id}")
+        db.engine.execute("DELETE FROM history WHERE user_id = :user_id", user_id = user_id)
         for row in df.itertuples():
-            db.engine.execute(f"INSERT INTO history (user_id, timestamp, power) VALUES ({user_id}, '{row.Timestamp}', {row.Power})")
+            sql = "INSERT INTO history (user_id, timestamp, power) VALUES (:user_id, ':timestamp', :power)"
+            db.engine.execute(sql, user_id = user_id, timestamp = row.Timestamp, power = row.Power)
 
         #return jsonify({"file": file_name, "upload": file_path, "fig": fig_json, "user_id": user_id})
         return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
