@@ -11,7 +11,6 @@ import pandas as pd
 import json
 import plotly
 import plotly.express as px
-import sqlite3
 
 from app import appbuilder, db, app
 
@@ -26,22 +25,31 @@ class Home(BaseView):
 
     @expose('/history/<string:period>')
     def history(self, period):
-        con = sqlite3.connect("app.db")
-        cur = con.cursor()
-
-        # for example ... if user == 'bart simpson' -> 7?! nicht umgesetzt
-
-        if period == 'last3months':
-            select = cur.execute("SELECT user_id, timestamp, power FROM history WHERE user_id = 7 AND timestamp > '2015-03-31 00:00:00+00:00'")
-        elif period == 'lastyear':
-            select = cur.execute("SELECT user_id, timestamp, power FROM history WHERE user_id = 7 AND timestamp > '2014-06-30 00:00:00+00:00'")
+        user_id = self.appbuilder.sm.current_user.id
+        if period == "last3months":
+            period_filter = "-3 months"
+        elif period == "lastyear":
+            period_filter = "-1 year"
         else:
-            select = cur.execute("SELECT user_id, timestamp, power FROM history WHERE user_id = 7")
+            period_filter = "-100 years"  
 
-        liste = select.fetchall()
-        con.close()
-        self.update_redirect()
-        return json.dumps(liste) # self.render_template('history.html')
+        sql = f"""
+            SELECT id, user_id, timestamp, power
+            FROM history
+            WHERE 
+                user_id = {user_id} AND 
+                timestamp > (
+                    SELECT DATETIME(MAX(timestamp), '{period_filter}')
+                    FROM history
+                    WHERE user_id = {user_id}
+            ) 
+        """
+        data = db.engine.execute(sql).fetchall()
+        data = [{"id": row[0], "user_id": row[1], "timestamp": row[2], "power": row[3]} for row in data]
+
+        #self.update_redirect()
+        return jsonify({"data": data}) 
+        # self.render_template('history.html')
     
     @expose('/leaderboard')
     def leaderboard(self):
@@ -97,7 +105,7 @@ class Home(BaseView):
         uploaded_file.save(file_path)
 
         # Process file
-        df = pd.read_csv(file_path).dropna().reset_index(drop=True)
+        df = pd.read_csv(file_path, sep=";").dropna().reset_index(drop=True)
         df.columns = ["Timestamp", "Power"]
         fig = px.line(df, x="Timestamp", y="Power")
         fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
