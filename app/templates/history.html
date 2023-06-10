@@ -4,7 +4,7 @@
 
 
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
-    <div style="margin-left: 50px;">
+    <div style="margin-left: 50px;" class="w-100">
         <h1 class="h3 ">
             This is page for plotting historical data <br/><br/>
 
@@ -12,11 +12,17 @@
 
                 Your task here is to load the data from the database related to the active user and 
                 plot a history according to the specified period of time.
-
             </p>
-        
 
         </h1>
+
+        {% if fig_json is not none %}        
+        <div id="chartDiv" class="w-100"></div>
+        <script type="text/javascript">
+            var fig = {{ fig_json | safe}};
+            Plotly.newPlot("chartDiv", fig);        
+        </script>
+        {% endif %}
 
     </div>
     

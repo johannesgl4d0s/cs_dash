@@ -1,55 +1,20 @@
 from flask import render_template, request, redirect, url_for, jsonify
 import os
-from os.path import join, dirname, realpath
 from flask_appbuilder.models.sqla.interface import SQLAInterface
-from flask_appbuilder import ModelView, ModelRestApi
+from flask_appbuilder import expose, BaseView
 
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import logging
-logging.getLogger()
 import pandas as pd
 import json
 import plotly
 import plotly.express as px
+import sqlite3
 
-from . import appbuilder, db, app
+from app import appbuilder, db, app
 
-"""
-    Create your Model based REST API::
-
-    class MyModelApi(ModelRestApi):
-        datamodel = SQLAInterface(MyModel)
-
-    appbuilder.add_api(MyModelApi)
-
-
-    Create your Views::
-
-
-    class MyModelView(ModelView):
-        datamodel = SQLAInterface(MyModel)
-
-
-    Next, register your Views::
-
-
-    appbuilder.add_view(
-        MyModelView,
-        "My View",
-        icon="fa-folder-open-o",
-        category="My Category",
-        category_icon='fa-envelope'
-    )
-"""
-
-"""
-    Application wide 404 error handler
-"""
-
-from flask_appbuilder import AppBuilder, BaseView, expose, has_access
-from app import appbuilder
-
+logging.getLogger()
 
 class Home(BaseView):
     route_base = '/'
@@ -61,8 +26,35 @@ class Home(BaseView):
 
     @expose('/history/<string:period>')
     def history(self, period):
-        self.update_redirect()
-        return self.render_template('history.html')
+        if period == "last3months":
+            period_filter = "-3 months"
+        elif period == "lastyear":
+            period_filter = "-1 year"
+        else:
+            period_filter = "-100 years"  
+        sql = """
+            SELECT user_id, timestamp, power
+            FROM history
+            WHERE user_id = :user_id AND timestamp > (
+                    SELECT DATETIME(MAX(timestamp), :period_filter)
+                    FROM history
+                    WHERE user_id = :user_id
+            ) 
+            ORDER BY timestamp
+        """
+
+        user_id = self.appbuilder.sm.current_user.id
+        count_data = db.engine.execute("SELECT COUNT(*) FROM history WHERE user_id = :user_id", user_id = user_id).fetchone()[0]
+        
+        fig_json = None
+        if count_data > 0:
+            data = db.engine.execute(sql, user_id = user_id, period_filter = period_filter).fetchall()
+            df = pd.DataFrame(data=data, columns=["user_id", "timestamp", "power"])
+            fig = px.line(df, x="timestamp", y="power")
+            fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+        return self.render_template('history.html', fig_json=fig_json)
+        
+
     
     @expose('/leaderboard')
     def leaderboard(self):
@@ -84,23 +76,18 @@ class Home(BaseView):
         """
         This function allows provides an appliance name that need to be disaggregated and the 
         """
+        user_id = self.appbuilder.sm.current_user.id        
+        count_data = db.engine.execute("SELECT COUNT(*) FROM history WHERE user_id = :user_id", user_id = user_id).fetchone()[0]
 
-        # Compute Path and File Name
-        current_user = str(self.appbuilder.sm.current_user)
-        file_name = f'{current_user}_power_data.csv'
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_name)
-
-        # Check if file exists
         fig_json = None
-        if os.path.exists(file_path):
-            # Process file
-            df = pd.read_csv(file_path).dropna().reset_index(drop=True)
-            df.columns = ["Timestamp", "Power"]
-            fig = px.line(df, x="Timestamp", y="Power")
+        if count_data > 0:
+            sql = "SELECT timestamp, power FROM history WHERE user_id = :user_id order by timestamp"
+            df = pd.DataFrame(db.engine.execute(sql, user_id = user_id), columns=["timestamp", "power"])
+            fig = px.line(df, x="timestamp", y="power")
             fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
-  
         return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
     
+
     @expose('/appliance/<string:appliance_name>', methods=['POST'])
     def upload_files(self, appliance_name):  
         # Request Validation
@@ -112,7 +99,9 @@ class Home(BaseView):
 
         # Compute Path and File Name
         current_user = str(self.appbuilder.sm.current_user)
-        file_name = f'{current_user}_power_data.csv'
+        user_id = self.appbuilder.sm.current_user.id
+        now = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+        file_name = f'{current_user}_power_data_{now}.csv'
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_name)
         
         # Save file
@@ -120,13 +109,27 @@ class Home(BaseView):
         uploaded_file.save(file_path)
 
         # Process file
-        df = pd.read_csv(file_path).dropna().reset_index(drop=True)
-        df.columns = ["Timestamp", "Power"]
-        fig = px.line(df, x="Timestamp", y="Power")
-        fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+        df = pd.read_csv(file_path, sep=";").dropna().reset_index(drop=True)
+        df.columns = ["timestamp", "power"]
 
-        #return jsonify({"file": file_name, "upload": file_path, "fig": fig_json})
-        return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
+        # Upload Data to DB
+        #db.engine.execute("DELETE FROM history WHERE user_id = :user_id", user_id = user_id)
+        con = sqlite3.connect("app.db")
+        sql = """
+            INSERT INTO history (user_id, timestamp, power)
+            VALUES (:user_id, :timestamp, :power)
+            ON CONFLICT (user_id, timestamp) DO UPDATE SET power = :power
+        """
+        df["user_id"] = user_id
+        df_dict = df.to_dict(orient="records")
+        con.executemany(sql, df_dict)
+        con.commit()
+        con.close()
+
+        return redirect(url_for('Home.appliance', appliance_name=appliance_name))
+
+        #return jsonify({"file": file_name, "upload": file_path, "fig": fig_json, "user_id": user_id})
+        #return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
 
     
 
@@ -141,6 +144,3 @@ def page_not_found(e):
         ),
         404,
     )
-
-
-db.create_all()
