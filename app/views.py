@@ -54,12 +54,45 @@ class Home(BaseView):
             fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
         return self.render_template('history.html', fig_json=fig_json)
         
-
     
     @expose('/leaderboard')
     def leaderboard(self):
-        self.update_redirect()
-        return self.render_template('leaderboard.html')
+        user_id = self.appbuilder.sm.current_user.id
+
+        # compute average power consumption for the user (last month)
+        sql = """
+            SELECT 
+                ROUND(AVG(power), 2) as avg_power 
+            FROM history
+            WHERE user_id = :user_id
+            GROUP BY
+                strftime('%Y-%m', timestamp)
+            ORDER BY 
+                strftime('%Y-%m', timestamp) DESC
+        """
+        user_power = db.engine.execute(sql, user_id = user_id).fetchone()[0]
+
+
+        # compute average power consumption for remaining users (last month)
+        sql = """
+            SELECT ROUND(AVG(power), 2) as avg_power
+            FROM history
+            WHERE user_id != :user_id
+            GROUP BY
+                strftime('%Y-%m', timestamp)
+            ORDER BY 
+                strftime('%Y-%m', timestamp) DESC
+        """
+        other_power = db.engine.execute(sql, user_id = user_id).fetchone()[0]
+        savings = round((user_power - other_power) / other_power * 100, 2)
+
+        # plotly
+        fig = px.bar(x=["You", "Others"], y=[user_power, other_power], labels={"x": "User", "y": "Average Power Consumption (W)"})
+        fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+
+        # render template
+        return self.render_template('leaderboard.html', user_power=user_power, 
+                                    other_power=other_power, savings=savings, fig_json=fig_json)
     
     @expose('/forecasting')
     def forecasting(self):
@@ -113,7 +146,6 @@ class Home(BaseView):
         df.columns = ["timestamp", "power"]
 
         # Upload Data to DB
-        #db.engine.execute("DELETE FROM history WHERE user_id = :user_id", user_id = user_id)
         con = sqlite3.connect("app.db")
         sql = """
             INSERT INTO history (user_id, timestamp, power)
@@ -127,10 +159,6 @@ class Home(BaseView):
         con.close()
 
         return redirect(url_for('Home.appliance', appliance_name=appliance_name))
-
-        #return jsonify({"file": file_name, "upload": file_path, "fig": fig_json, "user_id": user_id})
-        #return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
-
     
 
 appbuilder.add_view_no_menu(Home())

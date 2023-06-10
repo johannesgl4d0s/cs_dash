@@ -13,14 +13,102 @@
                 Your task here is to show a leader board for the user showing how much energy he is consuming/saving compared to other existing users in the 
                 platform. The aim here is to create competetion flavour in the platform and motivate further savings. 
                 You have the freedom to use whatever elements that you think may improve the savings.
-
             </p>
-        
-
         </h1>
-
     </div>
-    
 </div>
+  
+
+<div class="container-fluid">
+    <div class="row">
+        <!-- User Consumption -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                My Average Consumption (Monthly)</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{user_power}} KWh</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-calendar fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Other Consumption -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                Others Average Consumption (Monthly)</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{other_power}} KWh</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-calendar fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Savings -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                {% if savings < 0 %}
+                                    Savings 
+                                {% else %}
+                                    Extra Consumption
+                                {% endif %} (Monthly)
+                            </div>
+                            
+                            <div class="row no-gutters align-items-center">
+                                <div class="col-auto">
+                                    <div class="h5 mb-0 mr-3 font-weight-bold text-gray-800">{{savings | abs}}%</div>
+                                </div>
+                                <div class="col">
+                                    <div class="progress progress-sm mr-2">
+                                        {% if savings < 0 %}
+                                        <div class="progress-bar bg-success" role="progressbar"
+                                            style="width: {{savings | abs}}%" aria-valuenow="{{savings | abs}}" aria-valuemin="0"
+                                            aria-valuemax="100">
+                                        </div>
+                                        {% else %}
+                                        <div class="progress-bar bg-danger" role="progressbar"
+                                            style="width: {{savings | abs}}%" aria-valuenow="{{savings | abs}}" aria-valuemin="0"
+                                            aria-valuemax="100">
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-clipboard-list fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div> <!-- End of Row -->
+    <div class="row">
+        {% if fig_json is not none %}        
+        <div id="chartDiv" class="mw-50"></div>
+        <script type="text/javascript">
+            var fig = {{ fig_json | safe}};
+            Plotly.newPlot("chartDiv", fig);        
+        </script>
+        {% endif %}
+    </div>
+</div>
+
 
 {% endblock %}
