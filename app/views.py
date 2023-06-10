@@ -10,6 +10,7 @@ import pandas as pd
 import json
 import plotly
 import plotly.express as px
+import sqlite3
 
 from app import appbuilder, db, app
 
@@ -32,7 +33,7 @@ class Home(BaseView):
         else:
             period_filter = "-100 years"  
         sql = """
-            SELECT id, user_id, timestamp, power
+            SELECT user_id, timestamp, power
             FROM history
             WHERE user_id = :user_id AND timestamp > (
                     SELECT DATETIME(MAX(timestamp), :period_filter)
@@ -48,7 +49,7 @@ class Home(BaseView):
         fig_json = None
         if count_data > 0:
             data = db.engine.execute(sql, user_id = user_id, period_filter = period_filter).fetchall()
-            df = pd.DataFrame(data=data, columns=["id", "user_id", "timestamp", "power"])
+            df = pd.DataFrame(data=data, columns=["user_id", "timestamp", "power"])
             fig = px.line(df, x="timestamp", y="power")
             fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
         return self.render_template('history.html', fig_json=fig_json)
@@ -99,7 +100,8 @@ class Home(BaseView):
         # Compute Path and File Name
         current_user = str(self.appbuilder.sm.current_user)
         user_id = self.appbuilder.sm.current_user.id
-        file_name = f'{current_user}_power_data.csv'
+        now = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+        file_name = f'{current_user}_power_data_{now}.csv'
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_name)
         
         # Save file
@@ -109,17 +111,25 @@ class Home(BaseView):
         # Process file
         df = pd.read_csv(file_path, sep=";").dropna().reset_index(drop=True)
         df.columns = ["timestamp", "power"]
-        fig = px.line(df, x="timestamp", y="power")
-        fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
 
         # Upload Data to DB
-        db.engine.execute("DELETE FROM history WHERE user_id = :user_id", user_id = user_id)
-        for row in df.itertuples():
-            sql = "INSERT INTO history (user_id, timestamp, power) VALUES (:user_id, :timestamp, :power)"
-            db.engine.execute(sql, user_id = user_id, timestamp = row.timestamp, power = row.power)
+        #db.engine.execute("DELETE FROM history WHERE user_id = :user_id", user_id = user_id)
+        con = sqlite3.connect("app.db")
+        sql = """
+            INSERT INTO history (user_id, timestamp, power)
+            VALUES (:user_id, :timestamp, :power)
+            ON CONFLICT (user_id, timestamp) DO UPDATE SET power = :power
+        """
+        df["user_id"] = user_id
+        df_dict = df.to_dict(orient="records")
+        con.executemany(sql, df_dict)
+        con.commit()
+        con.close()
+
+        return redirect(url_for('Home.appliance', appliance_name=appliance_name))
 
         #return jsonify({"file": file_name, "upload": file_path, "fig": fig_json, "user_id": user_id})
-        return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
+        #return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
 
     
 

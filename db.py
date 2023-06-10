@@ -4,11 +4,12 @@ cur = con.cursor()
 
 # Create Tables
 sql = """
+    DROP TABLE IF EXISTS history;
     CREATE TABLE IF NOT EXISTS history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
         timestamp DATETIME NOT NULL,
-        power NUMERIC NOT NULL
+        power NUMERIC default 0,
+        primary key (user_id, timestamp)
     )
 """
 cur.executescript(sql)
