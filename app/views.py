@@ -157,20 +157,11 @@ class Home(BaseView):
         if ".csv" not in request.files['file'].filename:
             raise Exception("No csv file uploaded")
 
-        # Compute Path and File Name
-        current_user = str(self.appbuilder.sm.current_user)
         user_id = self.appbuilder.sm.current_user.id
-        now = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-        file_name = f'{current_user}_power_data_{now}.csv'
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_name)
-        
-        # Save file
-        uploaded_file = request.files['file']
-        uploaded_file.save(file_path)
-
-        # Process file
-        df = pd.read_csv(file_path, sep=";").dropna().reset_index(drop=True)
+        df = pd.read_csv(request.files.get("file"), sep=";").dropna().reset_index(drop=True)
         df.columns = ["timestamp", "power"]
+
+        # Normalise data
         mean_frz, std_frz, df_new = normalise(df['power'])
         WINDOW_SIZE =99
 
@@ -205,7 +196,8 @@ class Home(BaseView):
         con.commit()
         con.close()
 
-        return redirect(url_for('Home.appliance', appliance_name=appliance_name,  fig_json=fig_json))
+        return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
+        #return redirect(url_for('Home.appliance', appliance_name=appliance_name,  fig_json=fig_json))
     
 
 appbuilder.add_view_no_menu(Home())
