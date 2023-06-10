@@ -47,7 +47,13 @@ APP_PARAMS = {'washing machine': {'mean': 34.28564, 'std': 224.33687},
               'kettle': {'mean': 14.282732, 'std': 167.7649}, 
               'microwave': {'mean': 7.1103287, 'std': 88.2785}}
 
-
+def normalise(df):
+    """
+    Normalises the values in df
+    """
+    mean = df.fillna(method='ffill').values.mean()
+    std = df.fillna(method = 'ffill').values.std()
+    return mean, std, (df.fillna(method='ffill').values-mean)/std
 
 def return_seq2point():
     model = Sequential()

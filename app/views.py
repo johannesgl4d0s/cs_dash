@@ -11,10 +11,37 @@ import json
 import plotly
 import plotly.express as px
 import sqlite3
+import numpy as np
+from app.deepmodels import *
+
 
 from app import appbuilder, db, app
 
 logging.getLogger()
+
+
+
+
+def load_models():
+    fridge_weights = os.path.join(app.config['UPLOAD_FOLDER_WEIGHTS'], 'seq2point-temp-weights-fridge-epoch0.h5')
+
+    kettle_weights = os.path.join(app.config['UPLOAD_FOLDER_WEIGHTS'], 'seq2point-temp-weights-kettle-epoch0.h5')
+    microwave_weights = os.path.join(app.config['UPLOAD_FOLDER_WEIGHTS'], 'seq2point-temp-weights-microwave-epoch0.h5')
+    wm_weights = os.path.join(app.config['UPLOAD_FOLDER_WEIGHTS'], 'seq2point-temp-weights-washing_machine-epoch0.h5')
+
+    fridge = return_seq2point()
+    kettle = return_seq2point()
+    microwave = return_seq2point()
+    wm = return_seq2point()
+
+    fridge.load_weights(fridge_weights)
+    kettle.load_weights(kettle_weights)
+    microwave.load_weights(microwave_weights)
+    wm.load_weights(wm_weights)
+    return fridge, kettle, microwave, wm
+
+fridge, kettle, microwave, wm = load_models()
+
 
 class Home(BaseView):
     route_base = '/'
@@ -144,6 +171,26 @@ class Home(BaseView):
         # Process file
         df = pd.read_csv(file_path, sep=";").dropna().reset_index(drop=True)
         df.columns = ["timestamp", "power"]
+        mean_frz, std_frz, df_new = normalise(df['power'])
+        WINDOW_SIZE =99
+
+        df_new = np.pad(df_new.reshape(-1), (WINDOW_SIZE//2, WINDOW_SIZE//2 +1))
+        df_new = np.array([df_new[i:i+WINDOW_SIZE] for i in range(len(df_new)-WINDOW_SIZE)])
+        fridge, kettle, microwave, wm = load_models()
+
+        if appliance_name == "washingmachine":
+            y_predict = fridge.predict(df_new)
+        elif appliance_name == "kettle":
+            y_predict = kettle.predict(df_new)
+        elif appliance_name == "dishwasher":
+            y_predict = wm.predict(df_new)
+        else:
+            y_predict = microwave.predict(df_new)
+
+        fig_json = None
+       
+        fig = px.line(y_predict)
+        fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
 
         # Upload Data to DB
         con = sqlite3.connect("app.db")
@@ -158,7 +205,7 @@ class Home(BaseView):
         con.commit()
         con.close()
 
-        return redirect(url_for('Home.appliance', appliance_name=appliance_name))
+        return redirect(url_for('Home.appliance', appliance_name=appliance_name,  fig_json=fig_json))
     
 
 appbuilder.add_view_no_menu(Home())

@@ -84,6 +84,8 @@ LANGUAGES = {
 # The file upload folder, when using models with files
 UPLOAD_FOLDER = basedir + "/app/static/uploads/"
 
+UPLOAD_FOLDER_WEIGHTS = basedir + "/app/static/weights/"
+
 # The image upload folder, when using models with images
 IMG_UPLOAD_FOLDER = basedir + "/app/static/uploads/"
 
