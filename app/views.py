@@ -23,16 +23,16 @@ logging.getLogger()
 
 
 def load_models():
-    fridge_weights = os.path.join(app.config['UPLOAD_FOLDER_WEIGHTS'], 'seq2point-temp-weights-fridge-epoch0.h5')
+    fridge_weights = os.path.join(app.config['UPLOAD_FOLDER_WEIGHTS'], 'seq2seq-temp-weights-fridge-epoch0.h5')
 
-    kettle_weights = os.path.join(app.config['UPLOAD_FOLDER_WEIGHTS'], 'seq2point-temp-weights-kettle-epoch0.h5')
-    microwave_weights = os.path.join(app.config['UPLOAD_FOLDER_WEIGHTS'], 'seq2point-temp-weights-microwave-epoch0.h5')
-    wm_weights = os.path.join(app.config['UPLOAD_FOLDER_WEIGHTS'], 'seq2point-temp-weights-washing_machine-epoch0.h5')
+    kettle_weights = os.path.join(app.config['UPLOAD_FOLDER_WEIGHTS'], 'seq2seq-temp-weights-kettle-epoch0.h5')
+    microwave_weights = os.path.join(app.config['UPLOAD_FOLDER_WEIGHTS'], 'seq2seq-temp-weights-microwave-epoch0.h5')
+    wm_weights = os.path.join(app.config['UPLOAD_FOLDER_WEIGHTS'], 'seq2seq-temp-weights-washing_machine-epoch0.h5')
 
-    fridge = return_seq2point()
-    kettle = return_seq2point()
-    microwave = return_seq2point()
-    wm = return_seq2point()
+    fridge = return_seq2seq()
+    kettle = return_seq2seq()
+    microwave = return_seq2seq()
+    wm = return_seq2seq()
 
     fridge.load_weights(fridge_weights)
     kettle.load_weights(kettle_weights)
@@ -40,7 +40,7 @@ def load_models():
     wm.load_weights(wm_weights)
     return fridge, kettle, microwave, wm
 
-fridge, kettle, microwave, wm = load_models()
+
 
 
 class Home(BaseView):
@@ -177,6 +177,11 @@ class Home(BaseView):
             y_predict = wm.predict(df_new)
         else:
             y_predict = microwave.predict(df_new)
+        
+        y_predict = aggregate_seq(y_predict)
+        y_predict = y_predict[:len(df['power'])]
+        y_predict = pd.DataFrame(y_predict, columns = ['power'])
+        y_predict.set_index(df['timestamp'], inplace=True)
 
         fig_json = None
        
