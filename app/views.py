@@ -77,7 +77,7 @@ class Home(BaseView):
         if count_data > 0:
             data = db.engine.execute(sql, user_id = user_id, period_filter = period_filter).fetchall()
             df = pd.DataFrame(data=data, columns=["user_id", "timestamp", "power"])
-            fig = px.line(df, x="timestamp", y="power")
+            fig = px.line(df, x="timestamp", y="power", title="Power Consumption History")
             fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
         return self.render_template('history.html', fig_json=fig_json)
         
@@ -97,7 +97,10 @@ class Home(BaseView):
             ORDER BY 
                 strftime('%Y-%m', timestamp) DESC
         """
-        user_power = db.engine.execute(sql, user_id = user_id).fetchone()[0]
+        try:
+            user_power = db.engine.execute(sql, user_id = user_id).fetchone()[0]
+        except:
+            user_power = 0
 
 
         # compute average power consumption for remaining users (last month)
@@ -110,11 +113,16 @@ class Home(BaseView):
             ORDER BY 
                 strftime('%Y-%m', timestamp) DESC
         """
-        other_power = db.engine.execute(sql, user_id = user_id).fetchone()[0]
-        savings = round((user_power - other_power) / other_power * 100, 2)
+        try:
+            other_power = db.engine.execute(sql, user_id = user_id).fetchone()[0]
+            savings = round((user_power - other_power) / other_power * 100, 2)
+        except:
+            other_power = 0
+            savings = 0
 
         # plotly
-        fig = px.bar(x=["You", "Others"], y=[user_power, other_power], labels={"x": "User", "y": "Average Power Consumption (W)"})
+        fig = px.bar(x=["You", "Others"], y=[user_power, other_power], 
+                     labels={"x": "User", "y": "Average Power Consumption"})
         fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
 
         # render template
@@ -138,13 +146,39 @@ class Home(BaseView):
         """
         user_id = self.appbuilder.sm.current_user.id        
         count_data = db.engine.execute("SELECT COUNT(*) FROM history WHERE user_id = :user_id", user_id = user_id).fetchone()[0]
-
         fig_json = None
+
         if count_data > 0:
+            # Load Data from DB
             sql = "SELECT timestamp, power FROM history WHERE user_id = :user_id order by timestamp"
             df = pd.DataFrame(db.engine.execute(sql, user_id = user_id), columns=["timestamp", "power"])
-            fig = px.line(df, x="timestamp", y="power")
+
+            # Normalise data
+            mean_frz, std_frz, df_new = normalise(df['power'])
+            WINDOW_SIZE =99
+
+            df_new = np.pad(df_new.reshape(-1), (WINDOW_SIZE//2, WINDOW_SIZE//2 +1))
+            df_new = np.array([df_new[i:i+WINDOW_SIZE] for i in range(len(df_new)-WINDOW_SIZE)])
+            fridge, kettle, microwave, wm = load_models()
+
+            # Make Predictions
+            if appliance_name == "washingmachine":
+                y_predict = fridge.predict(df_new)
+            elif appliance_name == "kettle":
+                y_predict = kettle.predict(df_new)
+            elif appliance_name == "dishwasher":
+                y_predict = wm.predict(df_new)
+            else:
+                y_predict = microwave.predict(df_new)
+        
+            y_predict = aggregate_seq(y_predict)
+            y_predict = y_predict[:len(df['power'])]
+            y_predict = pd.DataFrame(y_predict, columns = ['power'])
+            y_predict.set_index(df['timestamp'], inplace=True)
+
+            fig = px.line(y_predict)
             fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+
         return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
     
 
@@ -161,33 +195,6 @@ class Home(BaseView):
         df = pd.read_csv(request.files.get("file"), sep=";").dropna().reset_index(drop=True)
         df.columns = ["timestamp", "power"]
 
-        # Normalise data
-        mean_frz, std_frz, df_new = normalise(df['power'])
-        WINDOW_SIZE =99
-
-        df_new = np.pad(df_new.reshape(-1), (WINDOW_SIZE//2, WINDOW_SIZE//2 +1))
-        df_new = np.array([df_new[i:i+WINDOW_SIZE] for i in range(len(df_new)-WINDOW_SIZE)])
-        fridge, kettle, microwave, wm = load_models()
-
-        if appliance_name == "washingmachine":
-            y_predict = fridge.predict(df_new)
-        elif appliance_name == "kettle":
-            y_predict = kettle.predict(df_new)
-        elif appliance_name == "dishwasher":
-            y_predict = wm.predict(df_new)
-        else:
-            y_predict = microwave.predict(df_new)
-        
-        y_predict = aggregate_seq(y_predict)
-        y_predict = y_predict[:len(df['power'])]
-        y_predict = pd.DataFrame(y_predict, columns = ['power'])
-        y_predict.set_index(df['timestamp'], inplace=True)
-
-        fig_json = None
-       
-        fig = px.line(y_predict)
-        fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
-
         # Upload Data to DB
         con = sqlite3.connect("app.db")
         sql = """
@@ -201,8 +208,7 @@ class Home(BaseView):
         con.commit()
         con.close()
 
-        return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
-        #return redirect(url_for('Home.appliance', appliance_name=appliance_name,  fig_json=fig_json))
+        return redirect(url_for('Home.appliance', appliance_name=appliance_name))
     
 
 appbuilder.add_view_no_menu(Home())
