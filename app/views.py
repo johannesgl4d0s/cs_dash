@@ -176,7 +176,13 @@ class Home(BaseView):
             y_predict = pd.DataFrame(y_predict, columns = ['power'])
             y_predict.set_index(df['timestamp'], inplace=True)
 
-            fig = px.line(y_predict)
+            fig = px.line(y_predict, title="Predicted power Consumption")
+
+            fig.update_layout(
+                title="Predicted power Consumption",
+                xaxis_title="DateTime",
+                yaxis_title="Power",
+                legend_title="Legend")
             fig_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
 
         return self.render_template('appliance.html', appliance_name=appliance_name, fig_json=fig_json)
